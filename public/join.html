@@ -43,7 +43,7 @@
   const participantId = getParticipantId();
 
   const socket = io();
-  socket.emit("join-question", { eventId, qId });
+  socket.emit("join-question", { eventCode: eventId, qCode: qId });
 
   socket.on("not-found", () => {
     document.getElementById("question").textContent = "This question could not be found.";
@@ -62,7 +62,7 @@
   function submit() {
     const val = input.value.trim();
     if (!val) return;
-    socket.emit("submit-word", { eventId, qId, word: val, participantId });
+    socket.emit("submit-word", { eventCode: eventId, qCode: qId, word: val, participantId });
     input.value = "";
     statusEl.textContent = "Submitted! You can send another word.";
     setTimeout(() => (statusEl.textContent = ""), 2500);
