@@ -47,9 +47,8 @@ This only needs to be done once.
    `mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority`
 6. Replace `<username>` and `<password>` with the ones from step 3. Add a
    database name before the `?`, e.g.:
-   `mongodb+srv://myuser:mypass@cluster0.xxxxx.mongodb.net/wordcloud?retryWrites=true&w=majority`
 
-Save this full string — you'll paste it into Render next.
+
 
 ## 2. Add environment variables on Render
 
