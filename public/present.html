@@ -113,7 +113,7 @@
   });
 
   const socket = io();
-  socket.emit("join-question", { eventId, qId });
+  socket.emit("join-question", { eventCode: eventId, qCode: qId });
 
   socket.on("not-found", () => {
     document.getElementById("question-display").textContent = "Question not found.";
