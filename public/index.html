@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Word Cloud Poll</title>
+<link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+<div class="container">
+  <div class="title-lg">Word Cloud Poll</div>
+  <p class="muted">Create an event, add as many questions as you like, and get a QR code for each one to drop into your slides.</p>
+
+  <div class="card">
+    <label>New event name</label>
+    <div class="row">
+      <input type="text" id="event-title" placeholder="e.g. Team Offsite 2026" style="flex:1; min-width:200px;" />
+      <button id="create-btn">Create event</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <label>Already have an event code?</label>
+    <div class="row">
+      <input type="text" id="event-code" placeholder="Paste event code here" style="flex:1; min-width:200px;" />
+      <button class="secondary" id="open-btn">Open dashboard</button>
+    </div>
+  </div>
+</div>
+
+<script>
+  document.getElementById("create-btn").onclick = async () => {
+    const title = document.getElementById("event-title").value;
+    const res = await fetch("/api/events", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    });
+    const ev = await res.json();
+    location.href = `/dashboard.html?event=${ev.id}`;
+  };
+
+  document.getElementById("open-btn").onclick = () => {
+    const code = document.getElementById("event-code").value.trim();
+    if (code) location.href = `/dashboard.html?event=${code}`;
+  };
+
+  ["event-title", "event-code"].forEach((id) => {
+    document.getElementById(id).addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        if (id === "event-title") document.getElementById("create-btn").click();
+        else document.getElementById("open-btn").click();
+      }
+    });
+  });
+</script>
+</body>
+</html>
