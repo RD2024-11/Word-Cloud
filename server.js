@@ -60,6 +60,7 @@ function genCode(len = 6) {
 }
 
 // ---- Middleware ----
+app.set("trust proxy", 1); // required behind Render's proxy for secure cookies to work
 app.use(express.json());
 app.use(
   session({
