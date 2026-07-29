@@ -33,6 +33,7 @@ mongoose
 const userSchema = new mongoose.Schema({
   username: { type: String, required: true, unique: true, trim: true },
   passwordHash: { type: String, required: true },
+  recoveryCodeHash: { type: String, required: true },
   createdAt: { type: Date, default: Date.now },
 });
 const User = mongoose.model("User", userSchema);
@@ -44,6 +45,7 @@ const questionSchema = new mongoose.Schema({
   participantIds: { type: [String], default: [] },
   createdAt: { type: Date, default: Date.now },
   lastResponseAt: { type: Date, default: null },
+  acceptingResponses: { type: Boolean, default: true },
 });
 
 const eventSchema = new mongoose.Schema({
@@ -95,10 +97,12 @@ app.post("/api/auth/signup", async (req, res) => {
     if (existing) return res.status(400).json({ error: "That username is already taken" });
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = await User.create({ username, passwordHash });
+    const recoveryCode = genCode(5) + "-" + genCode(5); // e.g. "ab12c-x9y8z"
+    const recoveryCodeHash = await bcrypt.hash(recoveryCode, 10);
+    const user = await User.create({ username, passwordHash, recoveryCodeHash });
     req.session.userId = user._id.toString();
     req.session.username = user.username;
-    res.json({ username: user.username });
+    res.json({ username: user.username, recoveryCode });
   } catch (err) {
     res.status(500).json({ error: "Signup failed" });
   }
@@ -124,6 +128,26 @@ app.post("/api/auth/logout", (req, res) => {
   req.session.destroy(() => res.json({ ok: true }));
 });
 
+app.post("/api/auth/reset-password", async (req, res) => {
+  try {
+    const username = (req.body.username || "").trim();
+    const recoveryCode = (req.body.recoveryCode || "").trim();
+    const newPassword = req.body.newPassword || "";
+    if (newPassword.length < 6) return res.status(400).json({ error: "Password must be at least 6 characters" });
+
+    const user = await User.findOne({ username: new RegExp(`^${username}$`, "i") });
+    if (!user) return res.status(400).json({ error: "Invalid username or recovery code" });
+    const ok = await bcrypt.compare(recoveryCode, user.recoveryCodeHash);
+    if (!ok) return res.status(400).json({ error: "Invalid username or recovery code" });
+
+    user.passwordHash = await bcrypt.hash(newPassword, 10);
+    await user.save();
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(500).json({ error: "Reset failed" });
+  }
+});
+
 app.get("/api/auth/me", (req, res) => {
   if (!req.session.userId) return res.status(401).json({ error: "Not logged in" });
   res.json({ username: req.session.username });
@@ -139,6 +163,7 @@ function publicQuestion(q) {
     responseCount,
     participantCount: (q.participantIds || []).length,
     lastResponseAt: q.lastResponseAt,
+    acceptingResponses: q.acceptingResponses !== false,
   };
 }
 
@@ -159,6 +184,7 @@ function questionState(ev, q) {
     words: words.sort((a, b) => b.count - a.count),
     responseCount: words.reduce((a, w) => a + w.count, 0),
     participantCount: (q.participantIds || []).length,
+    acceptingResponses: q.acceptingResponses !== false,
   };
 }
 
@@ -218,6 +244,13 @@ app.patch("/api/events/:eventCode", requireAuth, async (req, res) => {
   res.json(publicEvent(ev));
 });
 
+app.delete("/api/events/:eventCode", requireAuth, async (req, res) => {
+  const ev = await findOwnedEvent(req, res);
+  if (!ev) return;
+  await Event.deleteOne({ _id: ev._id });
+  res.json({ ok: true });
+});
+
 app.post("/api/events/:eventCode/questions", requireAuth, async (req, res) => {
   const ev = await findOwnedEvent(req, res);
   if (!ev) return;
@@ -233,8 +266,40 @@ app.patch("/api/events/:eventCode/questions/:qCode", requireAuth, async (req, re
   const q = ev.questions.find((q) => q.code === req.params.qCode);
   if (!q) return res.status(404).json({ error: "Question not found" });
   if (req.body.text && req.body.text.trim()) q.text = req.body.text.trim();
+  if (typeof req.body.acceptingResponses === "boolean") q.acceptingResponses = req.body.acceptingResponses;
   await ev.save();
   io.to(`${ev.code}:${q.code}`).emit("state", questionState(ev, q));
+  res.json(publicEvent(ev));
+});
+
+app.post("/api/events/:eventCode/questions/:qCode/duplicate", requireAuth, async (req, res) => {
+  const ev = await findOwnedEvent(req, res);
+  if (!ev) return;
+  const q = ev.questions.find((q) => q.code === req.params.qCode);
+  if (!q) return res.status(404).json({ error: "Question not found" });
+  const idx = ev.questions.indexOf(q);
+  ev.questions.splice(idx + 1, 0, {
+    code: genCode(),
+    text: q.text,
+    words: new Map(),
+    participantIds: [],
+    acceptingResponses: true,
+  });
+  await ev.save();
+  res.json(publicEvent(ev));
+});
+
+app.post("/api/events/:eventCode/questions/reorder", requireAuth, async (req, res) => {
+  const ev = await findOwnedEvent(req, res);
+  if (!ev) return;
+  const codes = Array.isArray(req.body.codes) ? req.body.codes : [];
+  const byCode = new Map(ev.questions.map((q) => [q.code, q]));
+  const reordered = codes.map((c) => byCode.get(c)).filter(Boolean);
+  // Safety: if the code list doesn't perfectly match, fall back to existing order.
+  if (reordered.length === ev.questions.length) {
+    ev.questions = reordered;
+    await ev.save();
+  }
   res.json(publicEvent(ev));
 });
 
@@ -281,6 +346,10 @@ io.on("connection", (socket) => {
     const ev = await Event.findOne({ code: eventCode });
     const q = ev && ev.questions.find((q) => q.code === qCode);
     if (!ev || !q) return;
+    if (q.acceptingResponses === false) {
+      socket.emit("closed");
+      return;
+    }
 
     const existing = q.words.get(key);
     if (existing) {
