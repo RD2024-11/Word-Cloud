@@ -1,3 +1,4 @@
+[README.md](https://github.com/user-attachments/files/30494913/README.md)
 # Word Cloud Poll — free, unlimited, self-hosted, with login
 
 A live word-cloud poll system for presentations, like Slido/Mentimeter's
@@ -7,17 +8,25 @@ participants, no cost, and your data actually persists.
 ## What's included
 
 - **Login/signup** — your events belong to your account only.
+- **Password recovery** — a one-time recovery code is shown at signup; use
+  it on the "Forgot password?" screen if you ever forget your password
+  (there's no email step, so keep the code somewhere safe).
 - **My Events page** — every event you've created, with question counts,
-  response counts, and last-activity status (Active/Idle).
-- **Dashboard** — add/delete questions inside an event.
+  response counts, and last-activity status (Active/Idle), plus a delete
+  button per event.
+- **Dashboard** — add/delete/duplicate/reorder questions, and rename the
+  event itself at any time.
 - **Present + QR** — a big-screen live word cloud with a unique QR code
-  per question, plus edit/clear controls (only visible to you, since it
-  requires login).
-- **Join page** — fully public, no login needed. Anyone who scans the QR
-  can submit a word.
+  per question, Next/Prev buttons to move through all of an event's
+  questions from one screen, a Pause/Resume responses toggle, a
+  Download-QR button, and edit/clear controls (only visible to you, since
+  it requires login).
+- **Join page** — fully public, no login needed. Shows a "responses
+  closed" message if the host has paused that question.
 - **Persistent storage** — event/question data is saved in MongoDB Atlas
   (free tier), so it survives server restarts and lasts as long as you
   want — weeks, months, indefinitely.
+- **Mobile-friendly** — dashboard and event pages are usable from a phone.
 
 ## Pages
 
@@ -44,11 +53,9 @@ This only needs to be done once.
    fixed on the free tier.
 5. Go to **Database** → click **Connect** on your cluster → **Drivers** →
    copy the connection string. It looks like:
-   `mongodb+srv://<username>:<password>@cluster0.xxxxx.mongodb.net/?retryWrites=true&w=majority`
-6. Replace `<username>` and `<password>` with the ones from step 3. Add a
-   database name before the `?`, e.g.:
+  
 
-
+Save this full string — you'll paste it into Render next.
 
 ## 2. Add environment variables on Render
 
