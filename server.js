@@ -341,32 +341,42 @@ io.on("connection", (socket) => {
     if (!word || typeof word !== "string") return;
     const clean = word.trim().slice(0, 30);
     if (!clean) return;
-    const key = clean.toLowerCase();
+    // Sanitize the map key: "." and "$" are unsafe in MongoDB field paths.
+    const key = clean.toLowerCase().replace(/[.$]/g, "_");
+    const pid = participantId && typeof participantId === "string" ? participantId.slice(0, 64) : null;
 
-    const ev = await Event.findOne({ code: eventCode });
-    const q = ev && ev.questions.find((q) => q.code === qCode);
-    if (!ev || !q) return;
-    if (q.acceptingResponses === false) {
+    // First check the question exists and is open (cheap read, not the hot path for races).
+    const check = await Event.findOne(
+      { code: eventCode, "questions.code": qCode },
+      { "questions.$": 1 }
+    );
+    const existingQ = check && check.questions && check.questions[0];
+    if (!existingQ) return;
+    if (existingQ.acceptingResponses === false) {
       socket.emit("closed");
       return;
     }
 
-    const existing = q.words.get(key);
-    if (existing) {
-      existing.count += 1;
-      q.words.set(key, existing);
-    } else {
-      q.words.set(key, { display: clean, count: 1 });
-    }
-    if (participantId && typeof participantId === "string") {
-      const pid = participantId.slice(0, 64);
-      if (!q.participantIds.includes(pid)) q.participantIds.push(pid);
-    }
-    q.lastResponseAt = new Date();
-    ev.markModified("questions");
-    await ev.save();
+    // Atomic increment: avoids lost updates when many people submit at once.
+    const incUpdate = {
+      $inc: { [`questions.$.words.${key}.count`]: 1 },
+      $set: {
+        [`questions.$.words.${key}.display`]: clean,
+        "questions.$.lastResponseAt": new Date(),
+      },
+    };
+    if (pid) incUpdate.$addToSet = { "questions.$.participantIds": pid };
 
-    io.to(`${eventCode}:${qCode}`).emit("state", questionState(ev, q));
+    const updated = await Event.findOneAndUpdate(
+      { code: eventCode, "questions.code": qCode },
+      incUpdate,
+      { new: true }
+    );
+    if (!updated) return;
+    const q = updated.questions.find((q) => q.code === qCode);
+    if (!q) return;
+
+    io.to(`${eventCode}:${qCode}`).emit("state", questionState(updated, q));
   });
 });
 
