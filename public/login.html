@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Log in — Word Cloud Poll</title>
+<link rel="stylesheet" href="/style.css" />
+<style>
+  body { display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+  .card { width: 100%; max-width: 380px; }
+  .toggle { text-align: center; margin-top: 14px; font-size: 14px; }
+  .toggle a, .link-btn { cursor: pointer; color: var(--accent); }
+  .error { color: #ff8a8a; font-size: 13px; margin-top: 10px; min-height: 18px; }
+  .recovery-box {
+    background: #16351f;
+    border: 1px solid #2a5f3d;
+    border-radius: 12px;
+    padding: 16px;
+    text-align: center;
+  }
+  .recovery-code {
+    font-size: 20px;
+    font-weight: 800;
+    letter-spacing: 0.06em;
+    color: #6fe0a0;
+    margin: 10px 0;
+    user-select: all;
+  }
+  .field { margin-bottom: 12px; }
+</style>
+</head>
+<body>
+
+<div class="card card" id="auth-card">
+  <div class="title-lg" style="text-align:center;">Word Cloud Poll</div>
+  <p class="muted" style="text-align:center; margin-top:0;">Sign in to manage your events</p>
+
+  <form id="auth-form">
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="username" autocomplete="username" />
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="password" autocomplete="current-password" />
+    </div>
+    <button type="submit" id="submit-btn" style="width:100%;">Log in</button>
+    <div class="error" id="error-msg"></div>
+  </form>
+
+  <div class="toggle">
+    <span id="toggle-text">Don't have an account? <a id="toggle-link">Sign up</a></span>
+  </div>
+  <div class="toggle" id="forgot-row">
+    <a class="link-btn" id="forgot-link">Forgot password?</a>
+  </div>
+</div>
+
+<div class="card" id="reset-card" style="display:none;">
+  <div class="title-lg" style="text-align:center;">Reset password</div>
+  <p class="muted" style="text-align:center; margin-top:0;">Enter the recovery code you saved when you signed up.</p>
+  <form id="reset-form">
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="reset-username" />
+    </div>
+    <div class="field">
+      <label>Recovery code</label>
+      <input type="text" id="reset-code" placeholder="xxxxx-xxxxx" />
+    </div>
+    <div class="field">
+      <label>New password</label>
+      <input type="password" id="reset-new-password" />
+    </div>
+    <button type="submit" style="width:100%;">Reset password</button>
+    <div class="error" id="reset-error"></div>
+  </form>
+  <div class="toggle">
+    <a class="link-btn" id="back-to-login">&larr; Back to log in</a>
+  </div>
+</div>
+
+<div class="card" id="recovery-card" style="display:none;">
+  <div class="title-lg" style="text-align:center;">Account created!</div>
+  <div class="recovery-box">
+    <div class="muted" style="font-size:13px;">Save this recovery code somewhere safe. It's the only way to reset your password if you forget it — it won't be shown again.</div>
+    <div class="recovery-code" id="recovery-code-display"></div>
+  </div>
+  <button id="recovery-continue-btn" style="width:100%; margin-top:16px;">I've saved it — continue</button>
+</div>
+
+<script>
+  let mode = "login"; // or "signup"
+  const form = document.getElementById("auth-form");
+  const submitBtn = document.getElementById("submit-btn");
+  const toggleText = document.getElementById("toggle-text");
+  const errorMsg = document.getElementById("error-msg");
+
+  function bindToggle() {
+    document.getElementById("toggle-link").onclick = () => {
+      mode = mode === "login" ? "signup" : "login";
+      submitBtn.textContent = mode === "login" ? "Log in" : "Create account";
+      toggleText.innerHTML =
+        mode === "login"
+          ? 'Don\'t have an account? <a id="toggle-link">Sign up</a>'
+          : 'Already have an account? <a id="toggle-link">Log in</a>';
+      document.getElementById("forgot-row").style.display = mode === "login" ? "block" : "none";
+      bindToggle();
+      errorMsg.textContent = "";
+    };
+  }
+  bindToggle();
+
+  document.getElementById("forgot-link").onclick = () => {
+    document.getElementById("auth-card").style.display = "none";
+    document.getElementById("reset-card").style.display = "block";
+  };
+  document.getElementById("back-to-login").onclick = () => {
+    document.getElementById("reset-card").style.display = "none";
+    document.getElementById("auth-card").style.display = "block";
+  };
+
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    errorMsg.textContent = "";
+    const username = document.getElementById("username").value.trim();
+    const password = document.getElementById("password").value;
+    const endpoint = mode === "login" ? "/api/auth/login" : "/api/auth/signup";
+
+    try {
+      const res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        errorMsg.textContent = data.error || "Something went wrong";
+        return;
+      }
+      if (mode === "signup" && data.recoveryCode) {
+        document.getElementById("auth-card").style.display = "none";
+        document.getElementById("recovery-code-display").textContent = data.recoveryCode;
+        document.getElementById("recovery-card").style.display = "block";
+        return;
+      }
+      const params = new URLSearchParams(location.search);
+      location.href = params.get("next") || "/events.html";
+    } catch (err) {
+      errorMsg.textContent = "Could not reach the server. Try again.";
+    }
+  });
+
+  document.getElementById("recovery-continue-btn").onclick = () => {
+    const params = new URLSearchParams(location.search);
+    location.href = params.get("next") || "/events.html";
+  };
+
+  document.getElementById("reset-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const resetError = document.getElementById("reset-error");
+    resetError.textContent = "";
+    const username = document.getElementById("reset-username").value.trim();
+    const recoveryCode = document.getElementById("reset-code").value.trim();
+    const newPassword = document.getElementById("reset-new-password").value;
+
+    try {
+      const res = await fetch("/api/auth/reset-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ username, recoveryCode, newPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        resetError.textContent = data.error || "Something went wrong";
+        return;
+      }
+      alert("Password reset! You can log in now.");
+      document.getElementById("reset-card").style.display = "none";
+      document.getElementById("auth-card").style.display = "block";
+    } catch (err) {
+      resetError.textContent = "Could not reach the server. Try again.";
+    }
+  });
+</script>
+
+</body>
+</html>

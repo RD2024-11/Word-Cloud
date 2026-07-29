@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Word Cloud — Answer</title>
+<link rel="stylesheet" href="/style.css" />
+<script src="/socket.io/socket.io.js"></script>
+<style>
+  body { display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .card { width: 100%; max-width: 420px; text-align: center; }
+  .event-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--muted); }
+  #question { font-size: 24px; font-weight: 800; margin: 8px 0 24px; }
+  input[type="text"] { padding: 16px; font-size: 18px; margin-bottom: 14px; }
+  button { width: 100%; padding: 16px; font-size: 17px; }
+  .status { margin-top: 16px; font-size: 14px; color: var(--muted); min-height: 20px; }
+  .closed-banner {
+    background: #3a2020;
+    color: #ff9a9a;
+    border-radius: 10px;
+    padding: 12px;
+    font-size: 14px;
+    margin-bottom: 14px;
+    display: none;
+  }
+</style>
+</head>
+<body>
+
+<div class="card">
+  <div class="event-label" id="event-label">&nbsp;</div>
+  <div id="question">Loading…</div>
+  <div class="closed-banner" id="closed-banner">Responses are closed for this question right now.</div>
+  <input type="text" id="word" maxlength="30" placeholder="Type your word…" autocomplete="off" />
+  <button id="submit-btn">Submit</button>
+  <div class="status" id="status"></div>
+</div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const eventId = params.get("event");
+  const qId = params.get("q");
+
+  // Persistent per-browser id so the host can show an approx. unique-participant count.
+  function getParticipantId() {
+    let id = localStorage.getItem("wc_participant_id");
+    if (!id) {
+      id = "p_" + Math.random().toString(36).slice(2) + Date.now().toString(36);
+      localStorage.setItem("wc_participant_id", id);
+    }
+    return id;
+  }
+  const participantId = getParticipantId();
+
+  const socket = io();
+  socket.emit("join-question", { eventCode: eventId, qCode: qId });
+
+  socket.on("not-found", () => {
+    document.getElementById("question").textContent = "This question could not be found.";
+    document.getElementById("word").disabled = true;
+    document.getElementById("submit-btn").disabled = true;
+  });
+
+  socket.on("state", (state) => {
+    document.getElementById("event-label").textContent = state.eventTitle;
+    document.getElementById("question").textContent = state.text;
+    const closedBanner = document.getElementById("closed-banner");
+    const input = document.getElementById("word");
+    const submitBtn = document.getElementById("submit-btn");
+    if (state.acceptingResponses === false) {
+      closedBanner.style.display = "block";
+      input.disabled = true;
+      submitBtn.disabled = true;
+    } else {
+      closedBanner.style.display = "none";
+      input.disabled = false;
+      submitBtn.disabled = false;
+    }
+  });
+
+  socket.on("closed", () => {
+    document.getElementById("closed-banner").style.display = "block";
+  });
+
+  const input = document.getElementById("word");
+  const statusEl = document.getElementById("status");
+
+  function submit() {
+    if (input.disabled) return;
+    const val = input.value.trim();
+    if (!val) return;
+    socket.emit("submit-word", { eventCode: eventId, qCode: qId, word: val, participantId });
+    input.value = "";
+    statusEl.textContent = "Submitted! You can send another word.";
+    setTimeout(() => (statusEl.textContent = ""), 2500);
+  }
+
+  document.getElementById("submit-btn").onclick = submit;
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") submit();
+  });
+</script>
+
+</body>
+</html>

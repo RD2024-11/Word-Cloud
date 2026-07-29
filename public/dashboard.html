@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Event Dashboard</title>
+<link rel="stylesheet" href="/style.css" />
+<style>
+  .q-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 14px 0;
+    border-bottom: 1px solid var(--border);
+    flex-wrap: wrap;
+  }
+  .q-row:last-child { border-bottom: none; }
+  .q-text { font-weight: 600; }
+  .q-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .q-status { font-size: 11px; padding: 2px 7px; border-radius: 999px; margin-left: 6px; }
+  .q-status.open { background: #16351f; color: #6fe0a0; }
+  .q-status.closed { background: #3a2020; color: #ff9a9a; }
+  .q-actions { display: flex; gap: 6px; flex-shrink: 0; flex-wrap: wrap; }
+  .q-actions button, .q-actions a button { padding: 7px 11px; font-size: 12px; width: auto; }
+  .q-order { display: flex; flex-direction: column; gap: 2px; margin-right: 4px; }
+  .q-order button { padding: 2px 7px; font-size: 11px; width: auto; background: var(--border); }
+  .code-box {
+    display: inline-block;
+    background: var(--panel2);
+    border: 1px solid var(--border);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--accent2);
+  }
+  .title-edit { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+  .title-edit input { max-width: 320px; }
+  .pencil { cursor: pointer; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="row" style="justify-content:space-between; align-items:flex-start;">
+    <div style="flex:1; min-width:200px;">
+      <div class="title-edit" id="title-display">
+        <div class="title-lg" id="event-title">Loading…</div>
+        <span class="pencil" id="edit-title-btn">&#9998; rename</span>
+      </div>
+      <div class="title-edit" id="title-edit-row" style="display:none;">
+        <input type="text" id="title-input" />
+        <button id="save-title-btn" style="width:auto;">Save</button>
+      </div>
+      <div class="muted" style="margin-top:6px;">Event code: <span class="code-box" id="event-code"></span></div>
+    </div>
+    <a href="/events.html">&larr; My events</a>
+  </div>
+
+  <div class="row" style="justify-content:flex-end; margin: 4px 0 -6px;">
+    <button class="danger" id="delete-event-btn" style="padding:8px 14px; font-size:13px; width:auto;">Delete this event</button>
+  </div>
+
+  <div class="card">
+    <label>Add a question</label>
+    <div class="row">
+      <input type="text" id="new-question" placeholder="e.g. What's one word for how you feel about the roadmap?" style="flex:1; min-width:220px;" />
+      <button id="add-btn" style="width:auto;">Add question</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="row" style="justify-content:space-between; margin-bottom:10px;">
+      <label style="margin-bottom:0;">Questions</label>
+      <a id="present-all-link" style="display:none;"><button style="width:auto; padding:8px 14px; font-size:13px;">Present all &rarr;</button></a>
+    </div>
+    <div id="questions-list"><p class="muted">No questions yet — add one above.</p></div>
+  </div>
+</div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  const eventId = params.get("event");
+  if (!eventId) location.href = "/events.html";
+
+  function escapeHtml(str) {
+    const div = document.createElement("div");
+    div.textContent = str;
+    return div.innerHTML;
+  }
+
+  let currentEv = null;
+
+  async function loadEvent() {
+    const res = await fetch(`/api/events/${eventId}`);
+    if (res.status === 401) {
+      location.href = `/login.html?next=${encodeURIComponent(location.pathname + location.search)}`;
+      return;
+    }
+    if (!res.ok) {
+      document.getElementById("event-title").textContent = "Event not found";
+      return;
+    }
+    const ev = await res.json();
+    currentEv = ev;
+    document.getElementById("event-title").textContent = ev.title;
+    document.getElementById("event-code").textContent = eventId;
+
+    const presentAllLink = document.getElementById("present-all-link");
+    if (ev.questions.length) {
+      presentAllLink.href = `/present.html?event=${eventId}&q=${ev.questions[0].code}`;
+      presentAllLink.style.display = "inline-block";
+    } else {
+      presentAllLink.style.display = "none";
+    }
+
+    const list = document.getElementById("questions-list");
+    if (!ev.questions.length) {
+      list.innerHTML = '<p class="muted">No questions yet — add one above.</p>';
+      return;
+    }
+    list.innerHTML = "";
+    ev.questions.forEach((q, idx) => {
+      const row = document.createElement("div");
+      row.className = "q-row";
+      row.innerHTML = `
+        <div class="q-order">
+          <button data-dir="up" data-code="${q.code}" ${idx === 0 ? "disabled" : ""}>&uarr;</button>
+          <button data-dir="down" data-code="${q.code}" ${idx === ev.questions.length - 1 ? "disabled" : ""}>&darr;</button>
+        </div>
+        <div style="flex:1; min-width:160px;">
+          <div class="q-text">${escapeHtml(q.text)} <span class="q-status ${q.acceptingResponses ? "open" : "closed"}">${q.acceptingResponses ? "Open" : "Closed"}</span></div>
+          <div class="q-meta">${q.participantCount} participant${q.participantCount === 1 ? "" : "s"} &middot; ${q.responseCount} response${q.responseCount === 1 ? "" : "s"}</div>
+        </div>
+        <div class="q-actions">
+          <a href="/present.html?event=${eventId}&q=${q.code}" target="_blank"><button>Present + QR</button></a>
+          <button data-dup="${q.code}">Duplicate</button>
+          <button class="danger" data-del="${q.code}">Delete</button>
+        </div>
+      `;
+      list.appendChild(row);
+    });
+
+    list.querySelectorAll("[data-dir]").forEach((btn) => {
+      btn.onclick = async () => {
+        const codes = currentEv.questions.map((q) => q.code);
+        const i = codes.indexOf(btn.dataset.code);
+        const j = btn.dataset.dir === "up" ? i - 1 : i + 1;
+        if (j < 0 || j >= codes.length) return;
+        [codes[i], codes[j]] = [codes[j], codes[i]];
+        await fetch(`/api/events/${eventId}/questions/reorder`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ codes }),
+        });
+        loadEvent();
+      };
+    });
+
+    list.querySelectorAll("[data-dup]").forEach((btn) => {
+      btn.onclick = async () => {
+        await fetch(`/api/events/${eventId}/questions/${btn.dataset.dup}/duplicate`, { method: "POST" });
+        loadEvent();
+      };
+    });
+
+    list.querySelectorAll("[data-del]").forEach((btn) => {
+      btn.onclick = async () => {
+        if (!confirm("Delete this question?")) return;
+        await fetch(`/api/events/${eventId}/questions/${btn.dataset.del}`, { method: "DELETE" });
+        loadEvent();
+      };
+    });
+  }
+
+  document.getElementById("add-btn").onclick = async () => {
+    const text = document.getElementById("new-question").value.trim();
+    if (!text) return;
+    await fetch(`/api/events/${eventId}/questions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ text }),
+    });
+    document.getElementById("new-question").value = "";
+    loadEvent();
+  };
+  document.getElementById("new-question").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("add-btn").click();
+  });
+
+  document.getElementById("edit-title-btn").onclick = () => {
+    document.getElementById("title-input").value = currentEv ? currentEv.title : "";
+    document.getElementById("title-display").style.display = "none";
+    document.getElementById("title-edit-row").style.display = "flex";
+    document.getElementById("title-input").focus();
+  };
+  document.getElementById("save-title-btn").onclick = async () => {
+    const title = document.getElementById("title-input").value.trim();
+    if (!title) return;
+    await fetch(`/api/events/${eventId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title }),
+    });
+    document.getElementById("title-display").style.display = "flex";
+    document.getElementById("title-edit-row").style.display = "none";
+    loadEvent();
+  };
+  document.getElementById("title-input").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("save-title-btn").click();
+  });
+
+  document.getElementById("delete-event-btn").onclick = async () => {
+    const title = currentEv ? currentEv.title : "this event";
+    if (!confirm(`Delete "${title}" and all its questions/responses? This can't be undone.`)) return;
+    await fetch(`/api/events/${eventId}`, { method: "DELETE" });
+    location.href = "/events.html";
+  };
+
+  loadEvent();
+</script>
+</body>
+</html>
